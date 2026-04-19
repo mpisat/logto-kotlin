@@ -1,6 +1,9 @@
 package io.logto.sdk.android.auth.logto
 
 import android.app.Activity
+import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
+import android.content.pm.ResolveInfo
 import android.net.Uri
 import com.google.common.truth.Truth.assertThat
 import io.logto.sdk.android.completion.Completion
@@ -19,6 +22,7 @@ import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
 import io.mockk.mockkObject
+import io.mockk.slot
 import io.mockk.verify
 import org.junit.Before
 import org.junit.Test
@@ -50,14 +54,29 @@ class LogtoAuthSessionTest {
         redirectUri = dummyRedirectUri
     )
 
+    private val mockPackageManager: PackageManager = mockk()
+
     @Before
     fun setUp() {
         every { mockActivity.packageName } returns "logto.test"
+        every { mockActivity.packageManager } returns mockPackageManager
+        every {
+            mockPackageManager.queryIntentActivities(any(), any<Int>())
+        } returns resolveInfoMatchingAuthActivity()
 
         every { mockActivity.startActivity(any()) } just Runs
 
         mockkObject(LogtoAuthManager)
         mockkObject(Core)
+    }
+
+    private fun resolveInfoMatchingAuthActivity(): List<ResolveInfo> {
+        val resolveInfo = ResolveInfo().apply {
+            activityInfo = ActivityInfo().apply {
+                name = LogtoWebViewAuthActivity::class.java.name
+            }
+        }
+        return listOf(resolveInfo)
     }
 
     @Test
@@ -258,6 +277,159 @@ class LogtoAuthSessionTest {
             .hasMessageThat()
             .isEqualTo(LogtoException.Type.UNABLE_TO_FETCH_TOKEN_BY_AUTHORIZATION_CODE.name)
         assertThat(codeTokenResponseCapture.last()).isNull()
+    }
+
+    @Test
+    fun `start should complete with REDIRECT_URI_NOT_REGISTERED when no activity handles the scheme`() {
+        val logtoExceptionCapture = mutableListOf<LogtoException?>()
+        val codeTokenResponseCapture = mutableListOf<CodeTokenResponse?>()
+
+        val mockCompletion: Completion<LogtoException, CodeTokenResponse> = mockk()
+        every { mockCompletion.onComplete(any(), any()) } just Runs
+        // Override default mock: no activity in our package handles this scheme.
+        every {
+            mockPackageManager.queryIntentActivities(any(), any<Int>())
+        } returns emptyList()
+
+        val logtoAuthSession = LogtoAuthSession(
+            mockActivity,
+            dummyLogtoConfig,
+            dummyOidcConfigResponse,
+            SignInOptions(redirectUri = "io.logto.unconfigured://callback"),
+            mockCompletion,
+        )
+
+        logtoAuthSession.start()
+
+        verify {
+            mockCompletion.onComplete(
+                captureNullable(logtoExceptionCapture),
+                captureNullable(codeTokenResponseCapture),
+            )
+        }
+
+        assertThat(logtoExceptionCapture.last())
+            .hasMessageThat()
+            .isEqualTo(LogtoException.Type.REDIRECT_URI_NOT_REGISTERED.name)
+        assertThat(logtoExceptionCapture.last()?.detail).contains("manifestPlaceholders")
+        assertThat(codeTokenResponseCapture.last()).isNull()
+        verify(exactly = 0) {
+            LogtoAuthManager.handleAuthStart(any())
+            mockActivity.startActivity(any())
+        }
+    }
+
+    @Test
+    fun `handleNoBrowserAvailable should complete with NO_BROWSER_AVAILABLE exception`() {
+        val logtoExceptionCapture = mutableListOf<LogtoException?>()
+        val codeTokenResponseCapture = mutableListOf<CodeTokenResponse?>()
+
+        val mockCompletion: Completion<LogtoException, CodeTokenResponse> = mockk()
+        every { mockCompletion.onComplete(any(), any()) } just Runs
+
+        val logtoAuthSession = LogtoAuthSession(
+            mockActivity,
+            dummyLogtoConfig,
+            dummyOidcConfigResponse,
+            dummySignInOptions,
+            mockCompletion,
+        )
+
+        logtoAuthSession.handleNoBrowserAvailable()
+
+        verify {
+            mockCompletion.onComplete(
+                captureNullable(logtoExceptionCapture),
+                captureNullable(codeTokenResponseCapture),
+            )
+        }
+
+        assertThat(logtoExceptionCapture.last())
+            .hasMessageThat()
+            .isEqualTo(LogtoException.Type.NO_BROWSER_AVAILABLE.name)
+        assertThat(codeTokenResponseCapture.last()).isNull()
+    }
+
+    @Test
+    fun `handleInvalidCallbackUri should complete with INVALID_CALLBACK_URI exception including detail`() {
+        val logtoExceptionCapture = mutableListOf<LogtoException?>()
+        val codeTokenResponseCapture = mutableListOf<CodeTokenResponse?>()
+
+        val mockCompletion: Completion<LogtoException, CodeTokenResponse> = mockk()
+        every { mockCompletion.onComplete(any(), any()) } just Runs
+
+        val logtoAuthSession = LogtoAuthSession(
+            mockActivity,
+            dummyLogtoConfig,
+            dummyOidcConfigResponse,
+            dummySignInOptions,
+            mockCompletion,
+        )
+
+        val sensitiveCode = "should-not-leak-code"
+        val sensitiveState = "should-not-leak-state"
+        val callback = Uri.parse(
+            "$dummyRedirectUri/wrong-path?code=$sensitiveCode&state=$sensitiveState"
+        )
+        logtoAuthSession.handleInvalidCallbackUri(callback)
+
+        verify {
+            mockCompletion.onComplete(
+                captureNullable(logtoExceptionCapture),
+                captureNullable(codeTokenResponseCapture),
+            )
+        }
+
+        val detail = logtoExceptionCapture.last()?.detail
+        assertThat(logtoExceptionCapture.last())
+            .hasMessageThat()
+            .isEqualTo(LogtoException.Type.INVALID_CALLBACK_URI.name)
+        assertThat(detail).contains("redirectUri")
+        // Regression: the URI's path is useful diagnostic context, but
+        // its query parameters carry the OIDC `code` and `state` and
+        // must never end up in `LogtoException.detail` where consumer
+        // telemetry will pick them up.
+        assertThat(detail).doesNotContain(sensitiveCode)
+        assertThat(detail).doesNotContain(sensitiveState)
+        assertThat(detail).contains("/wrong-path")
+        assertThat(codeTokenResponseCapture.last()).isNull()
+    }
+
+    @Test
+    fun `matchesState should return true only when URI carries the session state value`() {
+        // Capture the per-attempt random `state` the session emits into
+        // its sign-in URI so the test can build callback URIs that
+        // either carry that state or do not. The activity's defense
+        // against external explicit-starts during in-flight auth (see
+        // LogtoWebViewAuthActivity Case 1 mismatch path) relies on this
+        // helper to tell a real Logto-issued response from a crafted
+        // intent.
+        val capturedOptions = slot<GenerateSignInUriOptions>()
+        every {
+            Core.generateSignInUri(capture(capturedOptions))
+        } returns "https://placeholder/signin"
+
+        val mockCompletion: Completion<LogtoException, CodeTokenResponse> = mockk()
+        every { mockCompletion.onComplete(any(), any()) } just Runs
+
+        val session = LogtoAuthSession(
+            mockActivity,
+            dummyLogtoConfig,
+            dummyOidcConfigResponse,
+            dummySignInOptions,
+            mockCompletion,
+        )
+
+        session.start()
+        val sessionState = capturedOptions.captured.state
+
+        val matching = Uri.parse("io.logto://callback?code=ok&state=$sessionState")
+        val mismatched = Uri.parse("io.logto://callback?code=ok&state=other")
+        val missing = Uri.parse("io.logto://callback?code=ok")
+
+        assertThat(session.matchesState(matching)).isTrue()
+        assertThat(session.matchesState(mismatched)).isFalse()
+        assertThat(session.matchesState(missing)).isFalse()
     }
 
     @Test

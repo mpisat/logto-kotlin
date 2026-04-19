@@ -24,6 +24,14 @@ android {
         targetSdk = 30
 
         consumerProguardFile("./proguard-rules.pro")
+
+        // Default manifest placeholder values used only when building or
+        // testing this library in isolation. Consuming apps MUST override
+        // `logtoRedirectScheme` / `logtoRedirectHost` in their own
+        // `manifestPlaceholders` so they line up with the redirectUri
+        // registered with Logto.
+        manifestPlaceholders["logtoRedirectScheme"] = "logto-callback"
+        manifestPlaceholders["logtoRedirectHost"] = "unused"
     }
 
     sourceSets {

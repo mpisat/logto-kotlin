@@ -81,4 +81,129 @@ class LogtoAuthManagerTest {
         assertThat(LogtoAuthManager.logtoAuthSession).isNull()
         assertThat(LogtoAuthManager.isLogtoAuthResult(mockk())).isFalse()
     }
+
+    @Test
+    fun `isLogtoAuthResult should reject prefix-collision host`() {
+        val redirectUri = "io.logto://callback"
+        val logtoAuthSession = LogtoAuthSession(
+            mockk(),
+            mockk(),
+            mockk(),
+            SignInOptions(redirectUri = redirectUri),
+            mockk()
+        )
+
+        LogtoAuthManager.handleAuthStart(logtoAuthSession)
+        // Same scheme, but host "callbackevil" shares a textual prefix with
+        // "callback". The old `startsWith` check would have returned true.
+        val impostor = Uri.parse("io.logto://callbackevil?code=stolen")
+        assertThat(LogtoAuthManager.isLogtoAuthResult(impostor)).isFalse()
+    }
+
+    @Test
+    fun `isLogtoAuthResult should reject prefix-collision path`() {
+        val redirectUri = "io.logto://callback/auth"
+        val logtoAuthSession = LogtoAuthSession(
+            mockk(),
+            mockk(),
+            mockk(),
+            SignInOptions(redirectUri = redirectUri),
+            mockk()
+        )
+
+        LogtoAuthManager.handleAuthStart(logtoAuthSession)
+        val impostor = Uri.parse("io.logto://callback/authextra?code=stolen")
+        assertThat(LogtoAuthManager.isLogtoAuthResult(impostor)).isFalse()
+    }
+
+    @Test
+    fun `isLogtoAuthResult should accept an exact scheme-host-path match`() {
+        val redirectUri = "io.logto://callback/auth"
+        val logtoAuthSession = LogtoAuthSession(
+            mockk(),
+            mockk(),
+            mockk(),
+            SignInOptions(redirectUri = redirectUri),
+            mockk()
+        )
+
+        LogtoAuthManager.handleAuthStart(logtoAuthSession)
+        val valid = Uri.parse("io.logto://callback/auth?code=ok&state=xyz")
+        assertThat(LogtoAuthManager.isLogtoAuthResult(valid)).isTrue()
+    }
+
+    @Test
+    fun `isLogtoAuthResult should be case-insensitive on scheme`() {
+        val redirectUri = "io.logto://callback"
+        val logtoAuthSession = LogtoAuthSession(
+            mockk(),
+            mockk(),
+            mockk(),
+            SignInOptions(redirectUri = redirectUri),
+            mockk()
+        )
+
+        LogtoAuthManager.handleAuthStart(logtoAuthSession)
+        val valid = Uri.parse("IO.LOGTO://callback?code=ok")
+        assertThat(LogtoAuthManager.isLogtoAuthResult(valid)).isTrue()
+    }
+
+    @Test
+    fun `isLogtoAuthResult should be case-insensitive on host`() {
+        // RFC 3986 §3.2.2: the host component is case-insensitive.
+        // Android's `Uri` does not normalize host case, so we must
+        // compare with `ignoreCase = true` to avoid rejecting an
+        // otherwise valid callback.
+        val redirectUri = "io.logto://Callback"
+        val logtoAuthSession = LogtoAuthSession(
+            mockk(),
+            mockk(),
+            mockk(),
+            SignInOptions(redirectUri = redirectUri),
+            mockk()
+        )
+
+        LogtoAuthManager.handleAuthStart(logtoAuthSession)
+        val valid = Uri.parse("io.logto://CALLBACK?code=ok")
+        assertThat(LogtoAuthManager.isLogtoAuthResult(valid)).isTrue()
+    }
+
+    @Test
+    fun `isAuthenticOidcState should delegate to the session's state matcher`() {
+        val mockSession: LogtoAuthSession = mockk()
+        val matchingUri: Uri = mockk()
+        val mismatchedUri: Uri = mockk()
+        every { mockSession.matchesState(matchingUri) } returns true
+        every { mockSession.matchesState(mismatchedUri) } returns false
+
+        LogtoAuthManager.handleAuthStart(mockSession)
+
+        assertThat(LogtoAuthManager.isAuthenticOidcState(matchingUri)).isTrue()
+        assertThat(LogtoAuthManager.isAuthenticOidcState(mismatchedUri)).isFalse()
+        // Authenticity check is read-only — must not clear the cached
+        // session, otherwise an attacker's spurious data-intent could
+        // race the legitimate callback by silently nulling the pointer.
+        assertThat(LogtoAuthManager.logtoAuthSession).isEqualTo(mockSession)
+    }
+
+    @Test
+    fun `isAuthenticOidcState should return false when no session is active`() {
+        assertThat(LogtoAuthManager.logtoAuthSession).isNull()
+        assertThat(LogtoAuthManager.isAuthenticOidcState(mockk())).isFalse()
+    }
+
+    @Test
+    fun `handleInvalidCallbackUri should invoke session handler and clear cache`() {
+        val mockLogtoAuthSession: LogtoAuthSession = mockk()
+        every { mockLogtoAuthSession.handleInvalidCallbackUri(any()) } just Runs
+        val mockCallbackUri: Uri = mockk()
+
+        LogtoAuthManager.handleAuthStart(mockLogtoAuthSession)
+        LogtoAuthManager.handleInvalidCallbackUri(mockCallbackUri)
+
+        verify {
+            mockLogtoAuthSession.handleInvalidCallbackUri(mockCallbackUri)
+        }
+        assertThat(LogtoAuthManager.logtoAuthSession).isNull()
+    }
 }

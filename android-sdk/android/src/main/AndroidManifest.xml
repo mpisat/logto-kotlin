@@ -10,10 +10,30 @@
     </queries>
 
     <application>
+        <!--
+            Native-browser fork: the sign-in activity is a Custom Tabs
+            trampoline. The `logtoRedirectScheme` / `logtoRedirectHost`
+            manifest placeholders must be declared by the consuming app
+            and MUST match the redirectUri registered with Logto and
+            passed to `LogtoClient.signInWithBrowser`.
+
+            Example (app module `build.gradle.kts`):
+
+                manifestPlaceholders["logtoRedirectScheme"] = "io.logto"
+                manifestPlaceholders["logtoRedirectHost"]   = "callback"
+        -->
         <activity android:name=".auth.logto.LogtoWebViewAuthActivity"
-            android:exported="false"
-            android:configChanges="orientation|screenSize|keyboard|keyboardHidden"
-            android:launchMode="singleTop" />
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|keyboard|keyboardHidden">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="${logtoRedirectScheme}"
+                    android:host="${logtoRedirectHost}" />
+            </intent-filter>
+        </activity>
 
         <activity android:name=".auth.social.web.WebSocialResultActivity"
             android:exported="true">
