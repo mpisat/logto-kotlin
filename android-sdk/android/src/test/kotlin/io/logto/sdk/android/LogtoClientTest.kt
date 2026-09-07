@@ -678,6 +678,41 @@ class LogtoClientTest {
         }
     }
 
+    @Test
+    fun `JWKS failure does not consume refresh token and retry still verifies ID token`() {
+        setupRefreshTokenTestEnv()
+        val failure = LogtoException(LogtoException.Type.UNABLE_TO_FETCH_JWKS_JSON)
+        var jwksAttempts = 0
+        every { logtoClient.getJwks(any()) } answers {
+            jwksAttempts += 1
+            firstArg<Completion<LogtoException, JsonWebKeySet>>().onComplete(
+                if (jwksAttempts == 1) failure else null,
+                if (jwksAttempts == 1) null else jwksMock,
+            )
+        }
+        var completions = 0
+        logtoClient.getAccessToken { exception, token ->
+            completions += 1
+            assertThat(exception).isSameInstanceAs(failure)
+            assertThat(token).isNull()
+        }
+        assertThat(completions).isEqualTo(1)
+        verify(exactly = 0) {
+            Core.fetchTokenByRefreshToken(any(), any(), any(), any(), any(), any(), any())
+        }
+
+        logtoClient.getAccessToken { exception, token ->
+            completions += 1
+            assertThat(exception).isNull()
+            assertThat(token?.token).isEqualTo(TEST_ACCESS_TOKEN)
+        }
+        assertThat(completions).isEqualTo(2)
+        verify(exactly = 1) {
+            Core.fetchTokenByRefreshToken(any(), any(), TEST_REFRESH_TOKEN, any(), any(), any(), any())
+            TokenUtils.verifyIdToken(TEST_ID_TOKEN, TEST_APP_ID, TEST_ISSUER, jwksMock)
+        }
+    }
+
     private fun setupRefreshTokenTestEnv() {
         every { logtoConfigMock.appId } returns TEST_APP_ID
 

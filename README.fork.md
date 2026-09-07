@@ -618,7 +618,25 @@ Anything that breaks these is a rebase-blocking regression:
     handoff. Deleting them silently breaks WeChat / Alipay even though
     the JS bridge is gone (`LOGTO-FORK.md §5.4`).
 
-## 6. References
+## 6. Refresh and callback ownership corrections (2026-09-07)
+
+- Refresh preflights the cached JWKS before sending the refresh token to the
+  token endpoint. A temporary JWKS failure therefore leaves the rotating
+  credential unconsumed. ID-token verification still runs before saving the
+  response. The JWKS cache is retained for the client lifetime; the Calido host
+  serializes SDK exchanges and account mutations through callback completion.
+- An exact redirect URI must also carry the active session's OAuth state before
+  the trampoline completes or clears that session. A hot callback with stale or
+  missing state preserves the session and suppresses only the associated resume;
+  a later authentic callback or browser cancellation still completes normally.
+- Deterministic regressions cover JWKS failure before exchange and retry with
+  ID-token verification, plus stale/missing-state exact redirects followed by an
+  authentic callback or cancellation. The consuming Calido Android module runs
+  these tests with `./gradlew --no-daemon --offline
+  :logto-native-browser:testDebugUnitTest` from its `android/` directory.
+  Physical browser/device behavior remains a separate release gate.
+
+## 7. References
 
 - `LOGTO-FORK.md` (Calido repo): product-side contract, test
   checklist, rollback mapping table.

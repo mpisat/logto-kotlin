@@ -236,6 +236,48 @@ class LogtoWebViewAuthActivityTest {
     }
 
     @Test
+    fun `exact redirect with wrong state preserves session for authentic callback`() {
+        val stale = Uri.parse("io.logto://callback?code=stale&state=old")
+        val authentic = Uri.parse("io.logto://callback?code=current&state=current")
+        every { LogtoAuthManager.isLogtoAuthResult(any()) } returns true
+        every { LogtoAuthManager.isAuthenticOidcState(authentic) } returns true
+        val savedState = Bundle().apply {
+            putBoolean("STATE_LAUNCHED", true)
+        }
+        val controller = Robolectric.buildActivity(LogtoWebViewAuthActivity::class.java, Intent())
+        controller.create(savedState).start().resume().pause()
+        controller.newIntent(Intent(Intent.ACTION_VIEW, stale)).resume()
+
+        assertThat(controller.get().isFinishing).isFalse()
+        verify(exactly = 0) { LogtoAuthManager.handleCallbackUri(any()) }
+        verify(exactly = 0) { LogtoAuthManager.handleInvalidCallbackUri(any()) }
+        verify(exactly = 0) { LogtoAuthManager.handleUserCancel() }
+
+        controller.pause().newIntent(Intent(Intent.ACTION_VIEW, authentic)).resume()
+        assertThat(controller.get().isFinishing).isTrue()
+        verify(exactly = 1) { LogtoAuthManager.handleCallbackUri(authentic) }
+        verify(exactly = 0) { LogtoAuthManager.handleUserCancel() }
+        controller.pause().stop().destroy()
+    }
+
+    @Test
+    fun `exact redirect with missing state still allows later browser cancellation`() {
+        every { LogtoAuthManager.isLogtoAuthResult(any()) } returns true
+        val savedState = Bundle().apply { putBoolean("STATE_LAUNCHED", true) }
+        val controller = Robolectric.buildActivity(LogtoWebViewAuthActivity::class.java, Intent())
+        controller.create(savedState).start().resume().pause()
+        controller.newIntent(Intent(Intent.ACTION_VIEW, Uri.parse("io.logto://callback?code=fake"))).resume()
+        verify(exactly = 0) { LogtoAuthManager.handleCallbackUri(any()) }
+        verify(exactly = 0) { LogtoAuthManager.handleUserCancel() }
+
+        controller.pause().resume()
+        verify(exactly = 1) { LogtoAuthManager.handleUserCancel() }
+        assertThat(controller.get().isFinishing).isTrue()
+        controller.pause().stop().destroy()
+        verify(exactly = 1) { LogtoAuthManager.handleUserCancel() }
+    }
+
+    @Test
     fun `OS recreation during in-flight session does not mask a genuine cancel`() {
         // Regression: a previous revision set `skipNextResumeCancel`
         // unconditionally inside `handleIntent`'s Case 2, including

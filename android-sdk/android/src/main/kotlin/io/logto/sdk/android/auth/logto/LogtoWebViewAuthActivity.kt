@@ -170,7 +170,9 @@ class LogtoWebViewAuthActivity : AppCompatActivity() {
                 finish()
                 return
             }
-            if (LogtoAuthManager.isLogtoAuthResult(uri)) {
+            // A matching redirect alone does not authenticate this attempt.
+            // Stale or forged state must leave the live session available.
+            if (LogtoAuthManager.isAuthenticOidcState(uri) && LogtoAuthManager.isLogtoAuthResult(uri)) {
                 completed = true
                 LogtoAuthManager.handleCallbackUri(uri)
                 finish()

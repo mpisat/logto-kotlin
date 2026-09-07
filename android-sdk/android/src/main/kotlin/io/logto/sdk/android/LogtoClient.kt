@@ -268,51 +268,60 @@ open class LogtoClient(
             return
         }
 
-        // MARK: If no access token is valid, fetch a new token by refresh token
-        getOidcConfig { getOidcConfigException, oidcConfig ->
-            getOidcConfigException?.let {
+        // Fetch verification keys before consuming a potentially rotating refresh token.
+        // getJwks caches these keys, so response verification cannot need another request.
+        getJwks { getJwksException, _ ->
+            getJwksException?.let {
                 completion.onComplete(it, null)
-                return@getOidcConfig
+                return@getJwks
             }
 
-            Core.fetchTokenByRefreshToken(
-                tokenEndpoint = requireNotNull(oidcConfig).tokenEndpoint,
-                clientId = logtoConfig.appId,
-                refreshToken = requireNotNull(refreshToken),
-                resource = resource,
-                organizationId = organizationId,
-                scopes = null,
-            ) { fetchRefreshedTokenException, fetchedTokenResponse ->
-                fetchRefreshedTokenException?.let {
-                    completion.onComplete(
-                        LogtoException(
-                            LogtoException.Type.UNABLE_TO_FETCH_TOKEN_BY_REFRESH_TOKEN,
-                            it,
-                        ),
-                        null,
-                    )
-                    return@fetchTokenByRefreshToken
+            // MARK: If no access token is valid, fetch a new token by refresh token
+            getOidcConfig { getOidcConfigException, oidcConfig ->
+                getOidcConfigException?.let {
+                    completion.onComplete(it, null)
+                    return@getOidcConfig
                 }
 
-                val refreshedToken = requireNotNull(fetchedTokenResponse)
-                val refreshedAccessToken = AccessToken(
-                    token = refreshedToken.accessToken,
-                    scope = refreshedToken.scope,
-                    expiresAt = expiresAtFrom(
-                        nowRoundToSec(),
-                        refreshedToken.expiresIn,
-                    ),
-                )
+                Core.fetchTokenByRefreshToken(
+                    tokenEndpoint = requireNotNull(oidcConfig).tokenEndpoint,
+                    clientId = logtoConfig.appId,
+                    refreshToken = requireNotNull(refreshToken),
+                    resource = resource,
+                    organizationId = organizationId,
+                    scopes = null,
+                ) { fetchRefreshedTokenException, fetchedTokenResponse ->
+                    fetchRefreshedTokenException?.let {
+                        completion.onComplete(
+                            LogtoException(
+                                LogtoException.Type.UNABLE_TO_FETCH_TOKEN_BY_REFRESH_TOKEN,
+                                it,
+                            ),
+                            null,
+                        )
+                        return@fetchTokenByRefreshToken
+                    }
 
-                verifyAndSaveTokenResponse(
-                    issuer = oidcConfig.issuer,
-                    responseIdToken = refreshedToken.idToken,
-                    responseRefreshToken = refreshedToken.refreshToken,
-                    accessTokenKey = buildAccessTokenKey(null, resource, organizationId),
-                    accessToken = refreshedAccessToken,
-                ) { verifyException ->
-                    verifyException?.let { completion.onComplete(it, null) }
-                        ?: completion.onComplete(null, refreshedAccessToken)
+                    val refreshedToken = requireNotNull(fetchedTokenResponse)
+                    val refreshedAccessToken = AccessToken(
+                        token = refreshedToken.accessToken,
+                        scope = refreshedToken.scope,
+                        expiresAt = expiresAtFrom(
+                            nowRoundToSec(),
+                            refreshedToken.expiresIn,
+                        ),
+                    )
+
+                    verifyAndSaveTokenResponse(
+                        issuer = oidcConfig.issuer,
+                        responseIdToken = refreshedToken.idToken,
+                        responseRefreshToken = refreshedToken.refreshToken,
+                        accessTokenKey = buildAccessTokenKey(null, resource, organizationId),
+                        accessToken = refreshedAccessToken,
+                    ) { verifyException ->
+                        verifyException?.let { completion.onComplete(it, null) }
+                            ?: completion.onComplete(null, refreshedAccessToken)
+                    }
                 }
             }
         }
