@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
 import io.mockk.Runs
@@ -62,9 +63,7 @@ class LogtoWebViewAuthActivityTest {
         }
 
         androidx.test.core.app.ActivityScenario.launch<LogtoWebViewAuthActivity>(intent).use { scenario ->
-            scenario.onActivity { activity ->
-                assertThat(activity.isFinishing).isTrue()
-            }
+            assertThat(scenario.state).isEqualTo(Lifecycle.State.DESTROYED)
         }
 
         // Activity finished without ever calling Custom Tabs or
