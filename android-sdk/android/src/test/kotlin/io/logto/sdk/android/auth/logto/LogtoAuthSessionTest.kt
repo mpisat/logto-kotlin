@@ -369,7 +369,7 @@ class LogtoAuthSessionTest {
         val sensitiveCode = "should-not-leak-code"
         val sensitiveState = "should-not-leak-state"
         val callback = Uri.parse(
-            "$dummyRedirectUri/wrong-path?code=$sensitiveCode&state=$sensitiveState"
+            "io.logto.android://com.muratpisat.calido/callback/wrong-path?code=$sensitiveCode&state=$sensitiveState"
         )
         logtoAuthSession.handleInvalidCallbackUri(callback)
 
