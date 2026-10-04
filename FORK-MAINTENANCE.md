@@ -35,3 +35,21 @@ bash tool/ensure-no-project-gradle-processes.sh "$PWD"
 ```
 
 Run cleanup even when Gradle fails. No physical-device acceptance or shipping host pin is claimed by these SDK results. Keep the previous Calido shipping pin until signed-candidate browser, storage, process recovery and background-call gates pass.
+
+## Final verification continuation: 2026-10-05
+
+The final hosted suite passed 141 tests, zero failures/errors/skips: 118 consumed Android SDK
+cases and 23 signed core verifier cases executed against official Maven core 3.0.0. Additional
+receiver-entry cases reject path suffixes, unexpected ports and user info, preserve the pending
+attempt, then accept its authentic callback exactly once. The core test addition corrupts only
+signature bytes while retaining valid claims/header/matching key and requires specifically
+`SIGNATURE_INVALID`, rather than accepting any rejection. Production core remains unchanged.
+
+The hosted harness stages `TokenUtilsTest.kt` and isolates test classes in separate JVMs because
+upstream MockK teardown clears answers but leaves instrumentation installed. The cause-specific
+core assertions passed independently and in the isolated combined suite. Final log:
+`/private/tmp/calido-logto-kotlin-v3-signature-final.log`; Gradle cleanup passed.
+
+GPT-6-astra reviewed the complete release-to-correction diff at `a24158a`, then separately reviewed
+the final receiver and signature test additions. No verified actionable findings were returned.
+These reviews and software passes do not close the physical acceptance gates above.

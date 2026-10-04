@@ -117,6 +117,21 @@ class LogtoCallbackAdmissionTest {
     }
 
     @Test
+    fun `path prefix callback preserves the pending sign-in`() {
+        assertRejectedThenAuthenticCallback("${redirect}2?code=bad&state=$state")
+    }
+
+    @Test
+    fun `unexpected callback port preserves the pending sign-in`() {
+        assertRejectedThenAuthenticCallback("io.logto.android://io.logto.sample:443/callback?code=bad&state=$state")
+    }
+
+    @Test
+    fun `unexpected callback user info preserves the pending sign-in`() {
+        assertRejectedThenAuthenticCallback("io.logto.android://other@io.logto.sample/callback?code=bad&state=$state")
+    }
+
+    @Test
     fun `duplicate code cannot consume the pending sign-in`() {
         assertRejectedThenAuthenticCallback("$redirect?code=bad&code=other&state=$state")
     }

@@ -15,6 +15,7 @@ import org.jose4j.jwt.ReservedClaimNames
 import org.jose4j.jwt.consumer.ErrorCodes
 import org.jose4j.jwt.consumer.InvalidJwtException
 import org.jose4j.keys.EllipticCurves
+import java.util.Base64
 import org.junit.Assert
 import org.junit.Test
 
@@ -195,6 +196,21 @@ class TokenUtilsTest {
         Assert.assertThrows(InvalidJwtException::class.java) {
             TokenUtils.verifyIdToken(idToken, testAudience, testIssuer, jwks)
         }
+    }
+
+    @Test
+    fun `verifyIdToken rejects a corrupted signature with matching issuer audience and key`() {
+        val parts = createTestIdTokenWithClaims(createTestIdTokenClaims()).split('.')
+        val signature = Base64.getUrlDecoder().decode(parts[2])
+        signature[0] = (signature[0].toInt() xor 1).toByte()
+        val corruptedToken = parts.take(2).joinToString(".") + "." +
+            Base64.getUrlEncoder().withoutPadding().encodeToString(signature)
+
+        val exception = Assert.assertThrows(InvalidJwtException::class.java) {
+            TokenUtils.verifyIdToken(corruptedToken, testAudience, testIssuer, createTestJwks())
+        }
+
+        assertThat(exception.hasErrorCode(ErrorCodes.SIGNATURE_INVALID)).isTrue()
     }
 
     @Test
