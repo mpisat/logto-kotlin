@@ -393,47 +393,60 @@ open class LogtoClient(
                 return@getOidcConfig
             }
 
-            Core.fetchTokenByRefreshToken(
-                tokenEndpoint = requireNotNull(oidcConfig).tokenEndpoint,
-                clientId = logtoConfig.appId,
-                refreshToken = tokenForRefresh,
-                resource = resource,
-                organizationId = organizationId,
-                scopes = null,
-            ) { fetchRefreshedTokenException, fetchedTokenResponse ->
-                fetchRefreshedTokenException?.let {
+            // Resolve signing keys before consuming a potentially rotating refresh token.
+            // getJwks caches the set, so response verification uses the same resolved keys.
+            getJwks { jwksException, _ ->
+                if (jwksException != null) {
                     completion.onComplete(
-                        LogtoException(
-                            LogtoException.Type.UNABLE_TO_FETCH_TOKEN_BY_REFRESH_TOKEN,
-                            it,
-                        ),
+                        if (credentialGuard.isCurrent(credentialStamp)) jwksException
+                        else LogtoException(LogtoException.Type.NOT_AUTHENTICATED),
                         null,
                     )
-                    return@fetchTokenByRefreshToken
+                    return@getJwks
                 }
 
-                val refreshedToken = requireNotNull(fetchedTokenResponse)
-                val refreshedAccessToken = AccessToken(
-                    token = refreshedToken.accessToken,
-                    scope = refreshedToken.scope,
-                    expiresAt = expiresAtFrom(
-                        nowRoundToSec(),
-                        refreshedToken.expiresIn,
-                    ),
-                )
+                Core.fetchTokenByRefreshToken(
+                    tokenEndpoint = requireNotNull(oidcConfig).tokenEndpoint,
+                    clientId = logtoConfig.appId,
+                    refreshToken = tokenForRefresh,
+                    resource = resource,
+                    organizationId = organizationId,
+                    scopes = null,
+                ) { fetchRefreshedTokenException, fetchedTokenResponse ->
+                    fetchRefreshedTokenException?.let {
+                        completion.onComplete(
+                            LogtoException(
+                                LogtoException.Type.UNABLE_TO_FETCH_TOKEN_BY_REFRESH_TOKEN,
+                                it,
+                            ),
+                            null,
+                        )
+                        return@fetchTokenByRefreshToken
+                    }
 
-                verifyAndSaveTokenResponse(
-                    credentialStamp = credentialStamp,
-                    issuer = oidcConfig.issuer,
-                    responseIdToken = refreshedToken.idToken,
-                    // RFC 6749 §6: keep the current refresh token when the response
-                    // does not issue a new one
-                    responseRefreshToken = refreshedToken.refreshToken ?: tokenForRefresh,
-                    accessTokenKey = buildAccessTokenKey(null, resource, organizationId),
-                    accessToken = refreshedAccessToken,
-                ) { verifyException ->
-                    verifyException?.let { completion.onComplete(it, null) }
-                        ?: completion.onComplete(null, refreshedAccessToken)
+                    val refreshedToken = requireNotNull(fetchedTokenResponse)
+                    val refreshedAccessToken = AccessToken(
+                        token = refreshedToken.accessToken,
+                        scope = refreshedToken.scope,
+                        expiresAt = expiresAtFrom(
+                            nowRoundToSec(),
+                            refreshedToken.expiresIn,
+                        ),
+                    )
+
+                    verifyAndSaveTokenResponse(
+                        credentialStamp = credentialStamp,
+                        issuer = oidcConfig.issuer,
+                        responseIdToken = refreshedToken.idToken,
+                        // RFC 6749 §6: keep the current refresh token when the response
+                        // does not issue a new one
+                        responseRefreshToken = refreshedToken.refreshToken ?: tokenForRefresh,
+                        accessTokenKey = buildAccessTokenKey(null, resource, organizationId),
+                        accessToken = refreshedAccessToken,
+                    ) { verifyException ->
+                        verifyException?.let { completion.onComplete(it, null) }
+                            ?: completion.onComplete(null, refreshedAccessToken)
+                    }
                 }
             }
         }

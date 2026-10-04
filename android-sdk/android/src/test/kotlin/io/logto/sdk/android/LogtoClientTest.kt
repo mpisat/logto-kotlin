@@ -653,7 +653,7 @@ class LogtoClientTest {
     }
 
     @Test
-    fun `a stale refresh response should be discarded without fetching the JWKS`() {
+    fun `a stale refresh response should be discarded without refetching the JWKS`() {
         setupDeferredRefreshTestEnv()
 
         val accessTokenResults = mutableListOf<LogtoException?>()
@@ -670,7 +670,7 @@ class LogtoClientTest {
         assertThat(accessTokenResults.last())
             .hasMessageThat()
             .contains(LogtoException.Type.NOT_AUTHENTICATED.name)
-        verify(exactly = 0) { logtoClient.getJwks(any()) }
+        verify(exactly = 1) { logtoClient.getJwks(any()) }
     }
 
     @Test
@@ -680,8 +680,14 @@ class LogtoClientTest {
         // Defer the JWKS fetch, so the sign-out can land between the staleness
         // pre-check and the commit
         val jwksCompletions = mutableListOf<Completion<LogtoException, JsonWebKeySet>>()
+        var jwksCalls = 0
         every { logtoClient.getJwks(any()) } answers {
-            jwksCompletions.add(firstArg())
+            jwksCalls += 1
+            if (jwksCalls == 1) {
+                firstArg<Completion<LogtoException, JsonWebKeySet>>().onComplete(null, jwksMock)
+            } else {
+                jwksCompletions.add(firstArg())
+            }
         }
 
         val accessTokenResults = mutableListOf<LogtoException?>()
@@ -707,8 +713,14 @@ class LogtoClientTest {
         setupDeferredRefreshTestEnv()
 
         val jwksCompletions = mutableListOf<Completion<LogtoException, JsonWebKeySet>>()
+        var jwksCalls = 0
         every { logtoClient.getJwks(any()) } answers {
-            jwksCompletions.add(firstArg())
+            jwksCalls += 1
+            if (jwksCalls == 1) {
+                firstArg<Completion<LogtoException, JsonWebKeySet>>().onComplete(null, jwksMock)
+            } else {
+                jwksCompletions.add(firstArg())
+            }
         }
         every { TokenUtils.verifyIdToken(any(), any(), any(), any(), any()) } throws mockk<InvalidJwtException>()
 
@@ -1449,6 +1461,41 @@ class LogtoClientTest {
         every { response.refreshToken } returns TEST_REFRESH_TOKEN
         every { response.idToken } returns TEST_ID_TOKEN
         return response
+    }
+
+    @Test
+    fun `JWKS failure does not consume refresh token and retry still verifies ID token`() {
+        setupRefreshTokenTestEnv()
+        val failure = LogtoException(LogtoException.Type.UNABLE_TO_FETCH_JWKS_JSON)
+        var jwksAttempts = 0
+        every { logtoClient.getJwks(any()) } answers {
+            jwksAttempts += 1
+            firstArg<Completion<LogtoException, JsonWebKeySet>>().onComplete(
+                if (jwksAttempts == 1) failure else null,
+                if (jwksAttempts == 1) null else jwksMock,
+            )
+        }
+        var completions = 0
+        logtoClient.getAccessToken { exception, token ->
+            completions += 1
+            assertThat(exception).isSameInstanceAs(failure)
+            assertThat(token).isNull()
+        }
+        assertThat(completions).isEqualTo(1)
+        verify(exactly = 0) {
+            Core.fetchTokenByRefreshToken(any(), any(), any(), any(), any(), any(), any())
+        }
+
+        logtoClient.getAccessToken { exception, token ->
+            completions += 1
+            assertThat(exception).isNull()
+            assertThat(token?.token).isEqualTo(TEST_ACCESS_TOKEN)
+        }
+        assertThat(completions).isEqualTo(2)
+        verify(exactly = 1) {
+            Core.fetchTokenByRefreshToken(any(), any(), TEST_REFRESH_TOKEN, any(), any(), any(), any())
+            TokenUtils.verifyIdToken(TEST_ID_TOKEN, TEST_APP_ID, TEST_ISSUER, jwksMock, TEST_CLOCK_TOLERANCE)
+        }
     }
 
     private fun setupRefreshTokenTestEnv() {
