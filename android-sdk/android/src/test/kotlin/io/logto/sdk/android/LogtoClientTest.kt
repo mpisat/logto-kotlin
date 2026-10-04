@@ -1,12 +1,16 @@
 package io.logto.sdk.android
 
 import android.app.Activity
+import android.app.Application
+import android.content.Context
 import android.net.Uri
+import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
 import io.logto.sdk.android.auth.logto.LogtoAuthManager
 import io.logto.sdk.android.auth.logto.LogtoAuthSession
 import io.logto.sdk.android.auth.logto.LogtoSignOutSession
 import io.logto.sdk.android.completion.Completion
+import io.logto.sdk.android.constant.StorageKey
 import io.logto.sdk.android.exception.LogtoException
 import io.logto.sdk.android.type.AccessToken
 import io.logto.sdk.android.type.IdTokenVerificationOptions
@@ -1416,10 +1420,14 @@ class LogtoClientTest {
      * [pendingRefreshCompletions] is invoked manually — for testing what happens when
      * a sign-out lands while token requests are still in flight.
      */
-    private fun setupDeferredRefreshTestEnv() {
+    private fun setupDeferredRefreshTestEnv(usingPersistStorage: Boolean = false) {
         every { logtoConfigMock.appId } returns TEST_APP_ID
+        every { logtoConfigMock.usingPersistStorage } returns usingPersistStorage
 
-        logtoClient = LogtoClient(logtoConfigMock, mockk())
+        logtoClient = LogtoClient(
+            logtoConfigMock,
+            if (usingPersistStorage) ApplicationProvider.getApplicationContext<Application>() else mockk(),
+        )
         mockkObject(logtoClient)
 
         logtoClient.setupRefreshToken(TEST_REFRESH_TOKEN)
@@ -1450,6 +1458,143 @@ class LogtoClientTest {
 
         mockkConstructor(LogtoSignOutSession::class)
         every { anyConstructed<LogtoSignOutSession>().start() } just Runs
+    }
+
+    @Test
+    fun `signOut during discovery prevents stale refresh persistence`() =
+        assertDeferredRefreshDiscarded(DeferredRefreshStage.DISCOVERY, replaceAccount = false)
+
+    @Test
+    fun `replacement after signOut during discovery preserves new credentials`() =
+        assertDeferredRefreshDiscarded(DeferredRefreshStage.DISCOVERY, replaceAccount = true)
+
+    @Test
+    fun `signOut during pre-exchange JWKS prevents stale refresh persistence`() =
+        assertDeferredRefreshDiscarded(DeferredRefreshStage.PRE_EXCHANGE_JWKS, replaceAccount = false)
+
+    @Test
+    fun `replacement after signOut during pre-exchange JWKS preserves new credentials`() =
+        assertDeferredRefreshDiscarded(DeferredRefreshStage.PRE_EXCHANGE_JWKS, replaceAccount = true)
+
+    @Test
+    fun `signOut during token response prevents stale refresh persistence`() =
+        assertDeferredRefreshDiscarded(DeferredRefreshStage.TOKEN_RESPONSE, replaceAccount = false)
+
+    @Test
+    fun `replacement after signOut during token response preserves new credentials`() =
+        assertDeferredRefreshDiscarded(DeferredRefreshStage.TOKEN_RESPONSE, replaceAccount = true)
+
+    @Test
+    fun `signOut during verification JWKS prevents stale refresh persistence`() =
+        assertDeferredRefreshDiscarded(DeferredRefreshStage.VERIFICATION_JWKS, replaceAccount = false)
+
+    @Test
+    fun `replacement after signOut during verification JWKS preserves new credentials`() =
+        assertDeferredRefreshDiscarded(DeferredRefreshStage.VERIFICATION_JWKS, replaceAccount = true)
+
+    @Test
+    fun `normal deferred refresh commits memory cache and persistent credentials`() {
+        setupDeferredRefreshTestEnv(usingPersistStorage = true)
+        val results = mutableListOf<Pair<LogtoException?, AccessToken?>>()
+        logtoClient.getAccessToken { exception, token -> results.add(exception to token) }
+        pendingRefreshCompletions.single().onComplete(
+            null,
+            mockRefreshTokenTokenResponse(refreshToken = "rotatedRefreshToken"),
+        )
+        logtoClient.getAccessToken { exception, token -> results.add(exception to token) }
+        assertThat(results).hasSize(2)
+        results.forEach { (exception, token) ->
+            assertThat(exception).isNull()
+            assertThat(token?.token).isEqualTo(TEST_ACCESS_TOKEN)
+        }
+        assertThat(usedRefreshTokens).containsExactly(TEST_REFRESH_TOKEN)
+        val preferences = ApplicationProvider.getApplicationContext<Application>().getSharedPreferences(
+            "${StorageKey.STORAGE_NAME_PREFIX}:$TEST_APP_ID", Context.MODE_PRIVATE,
+        )
+        assertThat(preferences.getString(StorageKey.ID_TOKEN, null)).isEqualTo(TEST_ID_TOKEN)
+        assertThat(preferences.getString(StorageKey.REFRESH_TOKEN, null)).isEqualTo("rotatedRefreshToken")
+    }
+
+    private enum class DeferredRefreshStage { DISCOVERY, PRE_EXCHANGE_JWKS, TOKEN_RESPONSE, VERIFICATION_JWKS }
+
+    private fun assertDeferredRefreshDiscarded(stage: DeferredRefreshStage, replaceAccount: Boolean) {
+        setupDeferredRefreshTestEnv(usingPersistStorage = true)
+        var pendingDiscovery: Completion<LogtoException, OidcConfigResponse>? = null
+        var discoveryCalls = 0
+        every { logtoClient.getOidcConfig(any()) } answers {
+            discoveryCalls += 1
+            if (stage == DeferredRefreshStage.DISCOVERY && discoveryCalls == 1) {
+                pendingDiscovery = firstArg()
+            } else {
+                firstArg<Completion<LogtoException, OidcConfigResponse>>().onComplete(null, oidcConfigResponseMock)
+            }
+        }
+        var pendingJwks: Completion<LogtoException, JsonWebKeySet>? = null
+        var jwksCalls = 0
+        every { logtoClient.getJwks(any()) } answers {
+            jwksCalls += 1
+            if ((stage == DeferredRefreshStage.PRE_EXCHANGE_JWKS && jwksCalls == 1) ||
+                (stage == DeferredRefreshStage.VERIFICATION_JWKS && jwksCalls == 2)
+            ) {
+                pendingJwks = firstArg()
+            } else {
+                firstArg<Completion<LogtoException, JsonWebKeySet>>().onComplete(null, jwksMock)
+            }
+        }
+        val results = mutableListOf<Pair<LogtoException?, AccessToken?>>()
+        logtoClient.getAccessToken { exception, token -> results.add(exception to token) }
+        val staleResponse = mockRefreshTokenTokenResponse(
+            accessToken = "staleAccessToken", refreshToken = "staleRefreshToken",
+        )
+        when (stage) {
+            DeferredRefreshStage.DISCOVERY -> assertThat(pendingDiscovery).isNotNull()
+            DeferredRefreshStage.PRE_EXCHANGE_JWKS -> assertThat(pendingJwks).isNotNull()
+            DeferredRefreshStage.TOKEN_RESPONSE -> assertThat(pendingRefreshCompletions).hasSize(1)
+            DeferredRefreshStage.VERIFICATION_JWKS -> {
+                pendingRefreshCompletions.single().onComplete(null, staleResponse)
+                assertThat(pendingJwks).isNotNull()
+            }
+        }
+        assertThat(results).isEmpty()
+        logtoClient.signOut(mockk(), "io.logto.android://io.logto.sample/callback")
+        if (replaceAccount) {
+            // Host hydration follows signOut's generation invalidation; setters alone do not invalidate it.
+            logtoClient.setupIdToken("replacementIdToken")
+            logtoClient.setupRefreshToken("replacementRefreshToken")
+        }
+        when (stage) {
+            DeferredRefreshStage.DISCOVERY -> requireNotNull(pendingDiscovery).onComplete(null, oidcConfigResponseMock)
+            DeferredRefreshStage.PRE_EXCHANGE_JWKS -> requireNotNull(pendingJwks).onComplete(null, jwksMock)
+            else -> Unit
+        }
+        if (stage == DeferredRefreshStage.VERIFICATION_JWKS) {
+            requireNotNull(pendingJwks).onComplete(null, jwksMock)
+        } else {
+            pendingRefreshCompletions.single().onComplete(null, staleResponse)
+        }
+        assertThat(results).hasSize(1)
+        assertThat(results.single().first?.message).isEqualTo(LogtoException.Type.NOT_AUTHENTICATED.name)
+        assertThat(results.single().second).isNull()
+        assertThat(logtoClient.isAuthenticated).isEqualTo(replaceAccount)
+        val preferences = ApplicationProvider.getApplicationContext<Application>().getSharedPreferences(
+            "${StorageKey.STORAGE_NAME_PREFIX}:$TEST_APP_ID", Context.MODE_PRIVATE,
+        )
+        assertThat(preferences.getString(StorageKey.ID_TOKEN, null))
+            .isEqualTo(if (replaceAccount) "replacementIdToken" else null)
+        assertThat(preferences.getString(StorageKey.REFRESH_TOKEN, null))
+            .isEqualTo(if (replaceAccount) "replacementRefreshToken" else null)
+        if (replaceAccount) {
+            val replacementClaims: IdTokenClaims = mockk()
+            every { TokenUtils.decodeIdToken("replacementIdToken") } returns replacementClaims
+            logtoClient.getIdTokenClaims { exception, claims ->
+                assertThat(exception).isNull()
+                assertThat(claims).isSameInstanceAs(replacementClaims)
+            }
+            verify(exactly = 1) { TokenUtils.decodeIdToken("replacementIdToken") }
+            logtoClient.getAccessToken { _, _ -> }
+            assertThat(usedRefreshTokens.last()).isEqualTo("replacementRefreshToken")
+            assertThat(pendingRefreshCompletions).hasSize(2)
+        }
     }
 
     private fun mockRefreshTokenTokenResponse(

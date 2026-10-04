@@ -38,7 +38,7 @@ Run cleanup even when Gradle fails. No physical-device acceptance or shipping ho
 
 ## Final verification continuation: 2026-10-05
 
-The final hosted suite passed 141 tests, zero failures/errors/skips: 118 consumed Android SDK
+The receiver/signature snapshot suite passed 141 tests, zero failures/errors/skips: 118 consumed Android SDK
 cases and 23 signed core verifier cases executed against official Maven core 3.0.0. Additional
 receiver-entry cases reject path suffixes, unexpected ports and user info, preserve the pending
 attempt, then accept its authentic callback exactly once. The core test addition corrupts only
@@ -69,3 +69,31 @@ Red: `/private/tmp/calido-logto-kotlin-v3-apk.log`. Green:
 production-ID APK packaging passed, with Dart, R8 and native symbols retained and
 Gradle process cleanup confirmed. GPT-6-astra separately reviewed this narrow rule
 and returned no actionable concerns. Packaging is not device/runtime acceptance.
+
+## Completed controlled-state matrices: 2026-10-05
+
+The expanded hosted suite passed 156 SDK/core tests, zero failures/errors/skips
+(133 Android SDK plus 23 real core verifier cases). Log:
+`/private/tmp/calido-logto-kotlin-matrix-final.log`; Gradle cleanup passed.
+
+Nine additional refresh cases control discovery, pre-exchange JWKS, token response
+and verification JWKS. They enter through public `getAccessToken`/`signOut`, require
+specifically `NOT_AUTHENTICATED` for stale completion, and inspect real SDK test
+preferences for absent stale persistence. Replacement cases hydrate new credentials
+AFTER SDK sign-out invalidates its generation, then verify the next refresh selects
+that replacement token. They do not claim arbitrary protected-field assignment
+invalidates the private SDK guard. The normal case proves successful persistence
+and cache reuse. Calido still disables SDK persistence and owns its encrypted store.
+
+Six additional callback cases exercise implicit exact-route resolution and unrelated
+route rejection, real-session callbacks after a paused/recreated browser Activity,
+genuine browser dismissal once, and null in-memory session after modeled process
+loss. The process-loss case is a controlled model, not a physical OS-kill result.
+The first matrix run passed 154 of 156 cases; two lifecycle assertions read the
+initial Custom Tab from Robolectric's shared started-activity queue. Consuming and
+asserting that initial launch corrected the fixture; no production change resulted.
+
+GPT-6-astra reviewed both frozen test diffs and the R8 maintenance evidence with no
+verified actionable findings. Production SDK/core source is unchanged by this
+matrix addition. Physical browser, process, encrypted-storage and background-call
+acceptance remain open.
