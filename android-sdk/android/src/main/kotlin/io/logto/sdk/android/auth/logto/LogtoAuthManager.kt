@@ -16,19 +16,28 @@ internal object LogtoAuthManager {
     }
 
     fun handleCallbackUri(uri: Uri) {
-        browserSession?.handleCallbackUri(uri)
+        val session = browserSession ?: return
+        if (!session.acceptsCallbackUri(uri)) {
+            return
+        }
         browserSession = null
+        session.handleCallbackUri(uri)
     }
 
     fun handleUserCancel() {
-        browserSession?.handleUserCancel()
+        val session = browserSession ?: return
         browserSession = null
+        session.handleUserCancel()
     }
 
     fun handleFailure(exception: LogtoException) {
-        browserSession?.handleFailure(exception)
+        val session = browserSession ?: return
         browserSession = null
+        session.handleFailure(exception)
     }
+
+    fun canHandleCallbackUri(uri: Uri) =
+        isLogtoAuthResult(uri) && browserSession?.acceptsCallbackUri(uri) == true
 
     fun isLogtoAuthResult(uri: Uri) = browserSession?.redirectUri?.let { redirectUri ->
         uri.matchesRedirectUri(Uri.parse(redirectUri))

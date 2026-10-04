@@ -16,6 +16,9 @@ interface LogtoBrowserSession {
      */
     val redirectUri: String?
 
+    /** Whether this callback belongs to the live session and may consume it. */
+    fun acceptsCallbackUri(callbackUri: Uri): Boolean
+
     fun handleCallbackUri(callbackUri: Uri)
 
     fun handleUserCancel()

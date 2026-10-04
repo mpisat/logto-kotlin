@@ -45,7 +45,7 @@ class LogtoBrowserAuthActivity : Activity() {
         // redirect re-creates it with a fresh instance state.
         val callbackUri = intent.data
         if (callbackUri != null) {
-            if (LogtoAuthManager.isLogtoAuthResult(callbackUri)) {
+            if (LogtoAuthManager.canHandleCallbackUri(callbackUri)) {
                 LogtoAuthManager.handleCallbackUri(callbackUri)
             }
             // A URI that does not belong to the pending session can neither complete

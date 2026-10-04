@@ -83,7 +83,7 @@ class LogtoBrowserAuthActivityTest {
 
     @Test
     fun `a redirect delivered to a recreated activity should complete the session`() {
-        every { LogtoAuthManager.isLogtoAuthResult(testCallbackUri) } returns true
+        every { LogtoAuthManager.canHandleCallbackUri(testCallbackUri) } returns true
         every { LogtoAuthManager.handleCallbackUri(testCallbackUri) } just Runs
 
         val redirectIntent = LogtoBrowserAuthActivity.createRedirectHandlingIntent(
@@ -101,7 +101,7 @@ class LogtoBrowserAuthActivityTest {
 
     @Test
     fun `the LogtoAuthManager should handle the callback uri when the redirect is delivered`() {
-        every { LogtoAuthManager.isLogtoAuthResult(testCallbackUri) } returns true
+        every { LogtoAuthManager.canHandleCallbackUri(testCallbackUri) } returns true
         every { LogtoAuthManager.handleCallbackUri(testCallbackUri) } just Runs
 
         activityController.create().resume()
@@ -131,7 +131,7 @@ class LogtoBrowserAuthActivityTest {
 
     @Test
     fun `a delivered uri that is not an auth result should neither complete nor cancel the session`() {
-        every { LogtoAuthManager.isLogtoAuthResult(any()) } returns false
+        every { LogtoAuthManager.canHandleCallbackUri(any()) } returns false
 
         activityController.create().resume()
         activityController.pause()

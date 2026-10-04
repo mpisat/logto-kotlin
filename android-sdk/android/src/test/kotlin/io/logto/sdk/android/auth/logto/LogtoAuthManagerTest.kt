@@ -23,6 +23,43 @@ class LogtoAuthManagerTest {
     }
 
     @Test
+    fun `callback completion cannot clear a newly started session`() {
+        val session: LogtoBrowserSession = mockk()
+        val replacement: LogtoBrowserSession = mockk()
+        every { session.acceptsCallbackUri(any()) } returns true
+        every { session.handleCallbackUri(any()) } answers {
+            LogtoAuthManager.handleAuthStart(replacement)
+        }
+        LogtoAuthManager.handleAuthStart(session)
+        LogtoAuthManager.handleCallbackUri(Uri.parse("io.logto.android://io.logto.sample/callback"))
+        assertThat(LogtoAuthManager.browserSession).isSameInstanceAs(replacement)
+    }
+
+    @Test
+    fun `cancellation completion cannot clear a newly started session`() {
+        val session: LogtoBrowserSession = mockk()
+        val replacement: LogtoBrowserSession = mockk()
+        every { session.handleUserCancel() } answers {
+            LogtoAuthManager.handleAuthStart(replacement)
+        }
+        LogtoAuthManager.handleAuthStart(session)
+        LogtoAuthManager.handleUserCancel()
+        assertThat(LogtoAuthManager.browserSession).isSameInstanceAs(replacement)
+    }
+
+    @Test
+    fun `failure completion cannot clear a newly started session`() {
+        val session: LogtoBrowserSession = mockk()
+        val replacement: LogtoBrowserSession = mockk()
+        every { session.handleFailure(any()) } answers {
+            LogtoAuthManager.handleAuthStart(replacement)
+        }
+        LogtoAuthManager.handleAuthStart(session)
+        LogtoAuthManager.handleFailure(LogtoException(LogtoException.Type.UNABLE_TO_LAUNCH_BROWSER))
+        assertThat(LogtoAuthManager.browserSession).isSameInstanceAs(replacement)
+    }
+
+    @Test
     fun `handleAuthStart should cache current browser session`() {
         val mockBrowserSession: LogtoBrowserSession = mockk()
         LogtoAuthManager.handleAuthStart(mockBrowserSession)
@@ -32,6 +69,7 @@ class LogtoAuthManagerTest {
     @Test
     fun `handleCallbackUri should invoke the handleCallbackUri method in the session and clear the session cache`() {
         val mockBrowserSession: LogtoBrowserSession = mockk()
+        every { mockBrowserSession.acceptsCallbackUri(any()) } returns true
         every { mockBrowserSession.handleCallbackUri(any()) } just Runs
         val mockCallbackUri: Uri = mockk()
 

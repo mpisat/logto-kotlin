@@ -802,7 +802,11 @@ class LogtoClientTest {
 
         val mockActivity: Activity = mockk()
         every { mockActivity.packageName } returns "logto.test"
-        every { mockActivity.startActivity(any()) } just Runs
+        var signInState = ""
+        every { mockActivity.startActivity(any()) } answers {
+            val authUri = firstArg<android.content.Intent>().getStringExtra("EXTRA_AUTH_URI")
+            signInState = requireNotNull(Uri.parse(authUri).getQueryParameter("state"))
+        }
 
         val signInResults = mutableListOf<LogtoException?>()
         logtoClient.signIn(mockActivity, "io.logto.android://io.logto.sample/callback") {
@@ -811,7 +815,7 @@ class LogtoClientTest {
 
         // The browser flow returns and the code exchange starts
         LogtoAuthManager.handleCallbackUri(
-            Uri.parse("io.logto.android://io.logto.sample/callback?code=testAuthCode"),
+            Uri.parse("io.logto.android://io.logto.sample/callback?code=testAuthCode&state=$signInState"),
         )
         assertThat(codeExchangeCompletions).hasSize(1)
 
@@ -853,7 +857,11 @@ class LogtoClientTest {
 
         val mockActivity: Activity = mockk()
         every { mockActivity.packageName } returns "logto.test"
-        every { mockActivity.startActivity(any()) } just Runs
+        var signInState = ""
+        every { mockActivity.startActivity(any()) } answers {
+            val authUri = firstArg<android.content.Intent>().getStringExtra("EXTRA_AUTH_URI")
+            signInState = requireNotNull(Uri.parse(authUri).getQueryParameter("state"))
+        }
 
         val signInResults = mutableListOf<LogtoException?>()
         logtoClient.signIn(mockActivity, "io.logto.android://io.logto.sample/callback") {
@@ -861,7 +869,7 @@ class LogtoClientTest {
         }
 
         LogtoAuthManager.handleCallbackUri(
-            Uri.parse("io.logto.android://io.logto.sample/callback?code=testAuthCode"),
+            Uri.parse("io.logto.android://io.logto.sample/callback?code=testAuthCode&state=$signInState"),
         )
         assertThat(codeExchangeCompletions).hasSize(1)
 
@@ -902,7 +910,11 @@ class LogtoClientTest {
 
         val mockActivity: Activity = mockk()
         every { mockActivity.packageName } returns "logto.test"
-        every { mockActivity.startActivity(any()) } just Runs
+        var signInState = ""
+        every { mockActivity.startActivity(any()) } answers {
+            val authUri = firstArg<android.content.Intent>().getStringExtra("EXTRA_AUTH_URI")
+            signInState = requireNotNull(Uri.parse(authUri).getQueryParameter("state"))
+        }
 
         val signInResults = mutableListOf<LogtoException?>()
         logtoClient.signIn(mockActivity, "io.logto.android://io.logto.sample/callback") {
@@ -910,7 +922,7 @@ class LogtoClientTest {
         }
 
         LogtoAuthManager.handleCallbackUri(
-            Uri.parse("io.logto.android://io.logto.sample/callback?code=testAuthCode"),
+            Uri.parse("io.logto.android://io.logto.sample/callback?code=testAuthCode&state=$signInState"),
         )
         assertThat(codeExchangeCompletions).hasSize(1)
 

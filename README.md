@@ -9,6 +9,21 @@
 </p>
 
 # Logto Kotlin SDKs
+
+**Calido fork:** `codex/native-browser-v3` starts at official 3.0.0 and retains
+pre-exchange JWKS and live-session callback admission corrections. See
+[FORK-MAINTENANCE.md](FORK-MAINTENANCE.md) for patch and verification evidence.
+The previous `native-browser` branch remains available for baseline/rollback.
+
+Calido hosts Android sources from an exact commit of this branch and consumes
+`io.logto.sdk:kotlin:3.0.0` as core. Do not add the official Android AAR alongside
+the hosted sources. The host owns encrypted token persistence and sets
+`usingPersistStorage = false`. Custom `LogtoBrowserSession` implementations must
+implement `acceptsCallbackUri` with their session's admission policy.
+
+The documentation below describes official artifacts. This fork has not
+published a replacement Maven Android artifact.
+
 [![Maven Central](https://img.shields.io/maven-central/v/io.logto.sdk/kotlin?logo=android)](https://search.maven.org/artifact/io.logto.sdk/android)
 [![Build Status](https://github.com/logto-io/kotlin/actions/workflows/main.yml/badge.svg)](https://github.com/logto-io/kotlin/actions/workflows/main.yml)
 [![Codecov](https://img.shields.io/codecov/c/github/logto-io/kotlin)](https://app.codecov.io/gh/logto-io/kotlin?branch=master)

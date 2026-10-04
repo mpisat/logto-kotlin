@@ -21,6 +21,8 @@ class LogtoSignOutSession(
         LogtoBrowserAuthActivity.launch(context, signOutUri)
     }
 
+    override fun acceptsCallbackUri(callbackUri: Uri) = LogtoAuthManager.isLogtoAuthResult(callbackUri)
+
     override fun handleCallbackUri(callbackUri: Uri) {
         completion.onComplete(null)
     }

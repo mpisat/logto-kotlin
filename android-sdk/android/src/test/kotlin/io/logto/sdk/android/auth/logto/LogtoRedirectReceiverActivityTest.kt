@@ -40,7 +40,7 @@ class LogtoRedirectReceiverActivityTest {
 
     @Test
     fun `should forward the redirect uri to the browser auth activity and finish`() {
-        every { LogtoAuthManager.isLogtoAuthResult(callbackUri) } returns true
+        every { LogtoAuthManager.canHandleCallbackUri(callbackUri) } returns true
 
         val activity = launchReceiver(callbackUri)
 
@@ -54,7 +54,7 @@ class LogtoRedirectReceiverActivityTest {
 
     @Test
     fun `should drop a uri that does not match the pending session`() {
-        every { LogtoAuthManager.isLogtoAuthResult(any()) } returns false
+        every { LogtoAuthManager.canHandleCallbackUri(any()) } returns false
 
         val activity = launchReceiver(callbackUri)
 

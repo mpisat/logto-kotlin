@@ -57,6 +57,27 @@ class LogtoAuthSession(
         LogtoBrowserAuthActivity.launch(context, signInUri)
     }
 
+    override fun acceptsCallbackUri(callbackUri: Uri): Boolean {
+        if (!callbackUri.isHierarchical || callbackUri.fragment != null) {
+            return false
+        }
+        // Check state even for provider errors: the core parser reports an error
+        // parameter before checking state, but it must not terminate another attempt.
+        if (callbackUri.getQueryParameters("state") != listOf(state)) {
+            return false
+        }
+        return try {
+            CallbackUriUtils.verifyAndParseCodeFromCallbackUri(
+                callbackUri.toString(),
+                signInOptions.redirectUri,
+                state,
+            )
+            true
+        } catch (exception: CallbackUriVerificationException) {
+            exception.message == CallbackUriVerificationException.Type.ERROR_FOUND_IN_URI.name
+        }
+    }
+
     override fun handleCallbackUri(callbackUri: Uri) {
         val authorizationCode = try {
             CallbackUriUtils.verifyAndParseCodeFromCallbackUri(
