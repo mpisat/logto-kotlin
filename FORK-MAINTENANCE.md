@@ -53,3 +53,19 @@ core assertions passed independently and in the isolated combined suite. Final l
 GPT-6-astra reviewed the complete release-to-correction diff at `a24158a`, then separately reviewed
 the final receiver and signature test additions. No verified actionable findings were returned.
 These reviews and software passes do not close the physical acceptance gates above.
+
+## Minified consumer verification: 2026-10-05
+
+The first signed Calido release build failed in R8 on the missing optional
+`org.slf4j.impl.StaticLoggerBinder`. Maven core 3.0.0 removed Logback, while jose4j
+still brings SLF4J API 1.7.36. Inspection of that exact API JAR's `LoggerFactory`
+confirmed its specific missing-binding catch selects the NOP fallback. Added only
+that class's `-dontwarn` consumer rule; the existing Gson model keep rule remains
+unchanged. No logger backend or broad missing-class suppression was added.
+
+Red: `/private/tmp/calido-logto-kotlin-v3-apk.log`. Green:
+`/private/tmp/calido-logto-kotlin-v3-apk-green.log`, running
+`make android-apk ANDROID_BUILD_NUMBER=30004` in the isolated host. R8 and signed
+production-ID APK packaging passed, with Dart, R8 and native symbols retained and
+Gradle process cleanup confirmed. GPT-6-astra separately reviewed this narrow rule
+and returned no actionable concerns. Packaging is not device/runtime acceptance.
