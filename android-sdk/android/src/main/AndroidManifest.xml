@@ -11,6 +11,7 @@
 
     <application>
         <activity android:name=".auth.logto.LogtoBrowserAuthActivity"
+            android:launchMode="singleTask"
             android:exported="false"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 

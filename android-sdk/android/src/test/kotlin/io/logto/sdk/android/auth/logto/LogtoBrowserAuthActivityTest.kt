@@ -1,8 +1,10 @@
 package io.logto.sdk.android.auth.logto
 
 import android.app.Application
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
@@ -50,6 +52,20 @@ class LogtoBrowserAuthActivityTest {
     }
 
     @Test
+    fun `browser auth manifest should reuse the waiting activity across callback tasks`() {
+        val appContext: Context = ApplicationProvider.getApplicationContext()
+        val info = appContext.packageManager.getActivityInfo(
+            ComponentName(appContext, LogtoBrowserAuthActivity::class.java),
+            0,
+        )
+
+        // A browser callback can enter a different task from an affinity-less host.
+        // CLEAR_TOP and SINGLE_TOP alone only search the callback's current task.
+        assertThat(info.launchMode).isEqualTo(ActivityInfo.LAUNCH_SINGLE_TASK)
+        assertThat(info.exported).isFalse()
+    }
+
+    @Test
     fun `the first resume should launch the auth uri in a custom tab`() {
         activityController.create().resume()
 
@@ -60,6 +76,23 @@ class LogtoBrowserAuthActivityTest {
         assertThat(
             startedIntent.getIntExtra("androidx.browser.customtabs.extra.SHARE_STATE", 0),
         ).isEqualTo(2)
+        assertThat(activity.isFinishing).isFalse()
+    }
+
+    @Test
+    fun `a new authorization delivered to a reused activity should open the new uri without cancellation`() {
+        activityController.create().resume()
+        assertThat(shadowOf(activity).nextStartedActivity.data).isEqualTo(Uri.parse(testAuthUri))
+        activityController.pause()
+
+        val replacementUri = "https://logto.dev/oidc/auth?state=replacement"
+        val replacementIntent = Intent(activity, LogtoBrowserAuthActivity::class.java).apply {
+            putExtra("EXTRA_AUTH_URI", replacementUri)
+        }
+        activityController.newIntent(replacementIntent).resume()
+
+        assertThat(shadowOf(activity).nextStartedActivity?.data).isEqualTo(Uri.parse(replacementUri))
+        verify(exactly = 0) { LogtoAuthManager.handleUserCancel() }
         assertThat(activity.isFinishing).isFalse()
     }
 

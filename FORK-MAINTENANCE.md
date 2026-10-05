@@ -97,3 +97,36 @@ GPT-6-astra reviewed both frozen test diffs and the R8 maintenance evidence with
 verified actionable findings. Production SDK/core source is unchanged by this
 matrix addition. Physical browser, process, encrypted-storage and background-call
 acceptance remain open.
+
+## Browser-return correction: 2026-10-05
+
+M23 Calido 30005 exposed a real browser-return failure after cancelled Google
+login and retry: the same account picker remained visible, while Back showed
+the app was already signed in. The waiting auth activity and Samsung Custom Tab
+were in one task; the callback created and finished an auth instance in another
+task because Calido's host has empty affinity. CLEAR_TOP/SINGLE_TOP alone did
+not locate the waiting activity across tasks.
+
+The candidate declares the private browser-auth activity singleTask and resets
+authUri/authStarted only for a trusted fresh authorization delivered through
+onNewIntent, preserving the validated callback path. Calido's hosted manifest
+must mirror the launch mode; its source hosting does not consume this manifest.
+
+Two regressions failed first: merged launch mode expected 2 but was 0, and a
+fresh authorization delivered to a reused instance launched no replacement URI.
+The full hosted rerun passed 158 SDK/core cases and 1080 host cases with no
+failures/errors/skips; Gradle cleanup passed. Logs are retained privately under
+/private/tmp/calido-logto-physical-2026-10-05/m23-task-routing*.log.
+
+GPT-6-astra reviewed only these routing changes. It found one conditional P2
+concern requiring physical verification: if the auth activity is a separate
+root task and the browser opens its own independent task, finishing auth may
+foreground the browser rather than the original caller. Samsung's supplied
+trace uses a same-task Custom Tab; it does not prove the independent-browser
+case. Test success/cancel/retry, Back, recreation and rejected callbacks on
+Samsung, Chrome and an independent ordinary-browser task before claiming
+browser-wide compatibility. This candidate is not shipping acceptance.
+
+Intentional cancellation still uses the existing USER_CANCELED callback.
+Calido's generic sign-in error mapping is a separate host concern; this patch
+does not change the UI/error policy or provider cookies/prompts.

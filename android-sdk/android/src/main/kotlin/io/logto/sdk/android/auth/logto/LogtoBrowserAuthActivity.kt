@@ -34,7 +34,15 @@ class LogtoBrowserAuthActivity : Activity() {
 
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
-        intent?.let(::setIntent)
+        intent?.let {
+            setIntent(it)
+            // singleTask can also deliver a fresh authorization to an existing instance.
+            // Reset launch state only for a trusted launch, never for a callback URI.
+            if (it.data == null && it.hasExtra(EXTRA_AUTH_URI)) {
+                authUri = it.getStringExtra(EXTRA_AUTH_URI)?.let(Uri::parse)
+                authStarted = false
+            }
+        }
     }
 
     override fun onResume() {
