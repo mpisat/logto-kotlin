@@ -398,6 +398,7 @@ class LogtoClientTest {
 
         val mockActivity: Activity = mockk()
         every { mockActivity.packageName } returns "logto.test"
+        every { mockActivity.runOnUiThread(any()) } answers { firstArg<Runnable>().run() }
         every { mockActivity.startActivity(any()) } just Runs
 
         val completionResults = mutableListOf<LogtoException?>()
@@ -445,6 +446,7 @@ class LogtoClientTest {
 
         val mockActivity: Activity = mockk()
         every { mockActivity.packageName } returns "logto.test"
+        every { mockActivity.runOnUiThread(any()) } answers { firstArg<Runnable>().run() }
         every { mockActivity.startActivity(any()) } just Runs
 
         val completionResults = mutableListOf<LogtoException?>()
@@ -494,6 +496,7 @@ class LogtoClientTest {
 
         val mockActivity: Activity = mockk()
         every { mockActivity.packageName } returns "logto.test"
+        every { mockActivity.runOnUiThread(any()) } answers { firstArg<Runnable>().run() }
         every { mockActivity.startActivity(any()) } just Runs
 
         val completionResults = mutableListOf<LogtoException?>()
@@ -536,6 +539,7 @@ class LogtoClientTest {
 
         val mockActivity: Activity = mockk()
         every { mockActivity.packageName } returns "logto.test"
+        every { mockActivity.runOnUiThread(any()) } answers { firstArg<Runnable>().run() }
         every { mockActivity.startActivity(any()) } just Runs
 
         val completionResults = mutableListOf<LogtoException?>()
@@ -577,6 +581,7 @@ class LogtoClientTest {
 
         val mockActivity: Activity = mockk()
         every { mockActivity.packageName } returns "logto.test"
+        every { mockActivity.runOnUiThread(any()) } answers { firstArg<Runnable>().run() }
         every { mockActivity.startActivity(any()) } just Runs
 
         val completionResults = mutableListOf<LogtoException?>()
@@ -807,6 +812,7 @@ class LogtoClientTest {
         val mockActivity: Activity = mockk()
         every { mockActivity.packageName } returns "logto.test"
         var signInState = ""
+        every { mockActivity.runOnUiThread(any()) } answers { firstArg<Runnable>().run() }
         every { mockActivity.startActivity(any()) } answers {
             val authUri = firstArg<android.content.Intent>().getStringExtra("EXTRA_AUTH_URI")
             signInState = requireNotNull(Uri.parse(authUri).getQueryParameter("state"))
@@ -862,6 +868,7 @@ class LogtoClientTest {
         val mockActivity: Activity = mockk()
         every { mockActivity.packageName } returns "logto.test"
         var signInState = ""
+        every { mockActivity.runOnUiThread(any()) } answers { firstArg<Runnable>().run() }
         every { mockActivity.startActivity(any()) } answers {
             val authUri = firstArg<android.content.Intent>().getStringExtra("EXTRA_AUTH_URI")
             signInState = requireNotNull(Uri.parse(authUri).getQueryParameter("state"))
@@ -915,6 +922,7 @@ class LogtoClientTest {
         val mockActivity: Activity = mockk()
         every { mockActivity.packageName } returns "logto.test"
         var signInState = ""
+        every { mockActivity.runOnUiThread(any()) } answers { firstArg<Runnable>().run() }
         every { mockActivity.startActivity(any()) } answers {
             val authUri = firstArg<android.content.Intent>().getStringExtra("EXTRA_AUTH_URI")
             signInState = requireNotNull(Uri.parse(authUri).getQueryParameter("state"))

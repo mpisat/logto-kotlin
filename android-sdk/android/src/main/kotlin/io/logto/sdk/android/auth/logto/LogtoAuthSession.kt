@@ -33,7 +33,7 @@ class LogtoAuthSession(
             return
         }
 
-        LogtoAuthManager.handleAuthStart(this)
+        val attemptId = LogtoAuthManager.handleAuthStart(this)
 
         val signInUri = Core.generateSignInUri(
             GenerateSignInUriOptions(
@@ -54,7 +54,7 @@ class LogtoAuthSession(
             ),
         )
 
-        LogtoBrowserAuthActivity.launch(context, signInUri)
+        LogtoBrowserAuthActivity.launch(context, signInUri, attemptId)
     }
 
     override fun acceptsCallbackUri(callbackUri: Uri): Boolean {

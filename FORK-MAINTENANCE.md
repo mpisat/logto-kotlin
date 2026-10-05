@@ -130,3 +130,58 @@ browser-wide compatibility. This candidate is not shipping acceptance.
 Intentional cancellation still uses the existing USER_CANCELED callback.
 Calido's generic sign-in error mapping is a separate host concern; this patch
 does not change the UI/error policy or provider cookies/prompts.
+
+## Owned browser termination: 2026-10-05
+
+FLUT-219: removing the browser-auth task while its launcher is stopped can destroy
+it permanently without another resume. The v3 resume-only cancellation then leaves
+the native sign-in completion pending. The launcher now reports cancellation from
+permanent destruction only for its own unfinished, launched attempt. The manager
+assigns a random UUID per start; launch intents and saved instance state retain that
+identity. Old activity destruction, recreation and resume cannot cancel a newer
+attempt, including replacement started reentrantly from completion. Terminal state
+is claimed before invoking client completion. Configuration and ordinary
+non-finishing destruction preserve ownership. Rejected callback URIs never cancel.
+
+Sign-out uses the same ownership check and retains successful best-effort completion
+on dismissal or permanent destruction. Public launch/session interfaces, callback
+route/state admission, private launcher and singleTask routing are unchanged.
+
+The SDK destruction regression failed first with no completion instead of
+USER_CANCELED. Calido adds a real SDK/activity test through CalidoAuth.signIn and
+runNativeSignIn to check process-owned lock release, retry and logout. Evidence is
+retained under /private/tmp/calido-kotlin-review-terminal-test. Physical task removal
+and browser compatibility remain acceptance gates; this does not diagnose the
+separate provider-page 404.
+
+Review also required atomic replacement safety because OIDC discovery can start a
+session from an OkHttp worker. Session and UUID now form one lock-protected attempt;
+all terminal paths compare/capture/detach atomically and call session code outside
+the lock. The start-returned identity is passed directly into the internal launcher,
+and delayed old trusted intents cannot overwrite the activity's current owner.
+Bounded concurrency and delayed-intent regressions failed first on replacement
+loss and missing cancellation, respectively.
+
+SDK launch submissions check captured ownership and call startActivity together on
+the Activity UI thread, outside the manager lock. Real Robolectric caller/main-looper
+tests prove a still-current queued worker launch dispatches and an obsolete one is
+discarded before Android task mutation. If Android has already delivered an old
+singleTask launch, its task clearing may have removed the current Custom Tab. The
+old intent cannot overwrite current ownership; the resulting normal resume may
+terminate the current attempt rather than leave it pending. No resume is blindly
+suppressed and no browser-preservation claim is made for an already-delivered stale
+intent. Physical task and browser return remain unverified.
+
+Final normal host gate passed 176 SDK/core and 1,081 Calido host tests, with zero
+failures, errors or skips. Command from the isolated host root:
+
+```bash
+JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home ./android/gradlew -p android :app:testDebugUnitTest :logto-native-browser:testDebugUnitTest --no-daemon --max-workers=1 -Pkotlin.compiler.execution.strategy=in-process
+bash tool/ensure-no-project-gradle-processes.sh "$PWD"
+```
+
+Log: /private/tmp/calido-kotlin-review-terminal-test/full-green.log. Final XML:
+/private/tmp/calido-kotlin-review-terminal-test/final-reports. Causal red XML and
+logs retain the original destruction, host ownership, concurrent admission and
+queued-launch failures. Fixture compilation/supervisor corrections and the
+rejected ignored-resume experiment are not final acceptance evidence.

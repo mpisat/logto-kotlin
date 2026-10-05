@@ -53,6 +53,7 @@ class LogtoAuthSessionTest {
     fun setUp() {
         every { mockActivity.packageName } returns "logto.test"
 
+        every { mockActivity.runOnUiThread(any()) } answers { firstArg<Runnable>().run() }
         every { mockActivity.startActivity(any()) } just Runs
 
         mockkObject(LogtoAuthManager)

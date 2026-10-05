@@ -43,6 +43,7 @@ class LogtoBrowserAuthActivityTest {
         activityController = Robolectric.buildActivity(LogtoBrowserAuthActivity::class.java, intent)
         activity = activityController.get()
         mockkObject(LogtoAuthManager)
+        every { LogtoAuthManager.ownsAttempt(any()) } returns true
     }
 
     @After
@@ -92,20 +93,20 @@ class LogtoBrowserAuthActivityTest {
         activityController.newIntent(replacementIntent).resume()
 
         assertThat(shadowOf(activity).nextStartedActivity?.data).isEqualTo(Uri.parse(replacementUri))
-        verify(exactly = 0) { LogtoAuthManager.handleUserCancel() }
+        verify(exactly = 0) { LogtoAuthManager.cancelOwnedAttempt(any()) }
         assertThat(activity.isFinishing).isFalse()
     }
 
     @Test
     fun `should report a failure without launching anything if no auth uri is provided`() {
-        every { LogtoAuthManager.handleFailure(any()) } just Runs
+        every { LogtoAuthManager.failOwnedAttempt(any(), any()) } just Runs
 
         val controller = Robolectric.buildActivity(LogtoBrowserAuthActivity::class.java)
         controller.create().resume()
 
         val exceptionCapture = slot<LogtoException>()
         verify {
-            LogtoAuthManager.handleFailure(capture(exceptionCapture))
+            LogtoAuthManager.failOwnedAttempt(any(), capture(exceptionCapture))
         }
         assertThat(exceptionCapture.captured)
             .hasMessageThat()
@@ -151,13 +152,13 @@ class LogtoBrowserAuthActivityTest {
 
     @Test
     fun `the LogtoAuthManager should handle user cancel when resumed without a redirect`() {
-        every { LogtoAuthManager.handleUserCancel() } just Runs
+        every { LogtoAuthManager.cancelOwnedAttempt(any()) } just Runs
 
         activityController.create().resume()
         activityController.pause().resume()
 
         verify {
-            LogtoAuthManager.handleUserCancel()
+            LogtoAuthManager.cancelOwnedAttempt(any())
         }
         assertThat(activity.isFinishing).isTrue()
     }
@@ -177,7 +178,7 @@ class LogtoBrowserAuthActivityTest {
 
         verify(exactly = 0) {
             LogtoAuthManager.handleCallbackUri(any())
-            LogtoAuthManager.handleUserCancel()
+            LogtoAuthManager.cancelOwnedAttempt(any())
         }
         assertThat(activity.isFinishing).isTrue()
     }
@@ -185,13 +186,13 @@ class LogtoBrowserAuthActivityTest {
     @Test
     fun `the LogtoAuthManager should handle failure if no browser can be launched`() {
         shadowOf(ApplicationProvider.getApplicationContext<Application>()).checkActivities(true)
-        every { LogtoAuthManager.handleFailure(any()) } just Runs
+        every { LogtoAuthManager.failOwnedAttempt(any(), any()) } just Runs
 
         activityController.create().resume()
 
         val exceptionCapture = slot<LogtoException>()
         verify {
-            LogtoAuthManager.handleFailure(capture(exceptionCapture))
+            LogtoAuthManager.failOwnedAttempt(any(), capture(exceptionCapture))
         }
         assertThat(exceptionCapture.captured)
             .hasMessageThat()

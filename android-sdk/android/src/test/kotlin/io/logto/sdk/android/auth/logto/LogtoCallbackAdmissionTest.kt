@@ -43,6 +43,7 @@ class LogtoCallbackAdmissionTest {
     @Before
     fun setUp() {
         every { activity.packageName } returns "io.logto.sample"
+        every { activity.runOnUiThread(any()) } answers { firstArg<Runnable>().run() }
         every { activity.startActivity(any()) } just Runs
         mockkObject(Core)
         every { Core.generateSignInUri(any()) } answers {

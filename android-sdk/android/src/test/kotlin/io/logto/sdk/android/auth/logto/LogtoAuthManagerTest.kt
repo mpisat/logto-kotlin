@@ -9,6 +9,11 @@ import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
 import io.mockk.verify
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.concurrent.thread
 import org.junit.After
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -20,6 +25,75 @@ class LogtoAuthManagerTest {
     @After
     fun tearDown() {
         LogtoAuthManager.browserSession = null
+    }
+
+    @Test
+    fun `owned cancellation and failure racing complete only once`() {
+        val session: LogtoBrowserSession = mockk(relaxed = true)
+        val completions = AtomicInteger()
+        every { session.handleUserCancel() } answers { completions.incrementAndGet(); Unit }
+        every { session.handleFailure(any()) } answers { completions.incrementAndGet(); Unit }
+        val id = LogtoAuthManager.handleAuthStart(session)
+        val release = CountDownLatch(1)
+        val workers = listOf(
+            thread { check(release.await(5, TimeUnit.SECONDS)); LogtoAuthManager.cancelOwnedAttempt(id) },
+            thread {
+                check(release.await(5, TimeUnit.SECONDS))
+                LogtoAuthManager.failOwnedAttempt(id, LogtoException(LogtoException.Type.UNABLE_TO_LAUNCH_BROWSER))
+            },
+        )
+        release.countDown()
+        workers.forEach { it.join(5000); assertThat(it.isAlive).isFalse() }
+        assertThat(completions.get()).isEqualTo(1)
+        assertThat(LogtoAuthManager.browserSession).isNull()
+    }
+
+    @Test
+    fun `owned cancellation completion permits replacement on another thread`() {
+        val session: LogtoBrowserSession = mockk()
+        val replacement: LogtoBrowserSession = mockk()
+        every { session.handleUserCancel() } answers {
+            val worker = thread { LogtoAuthManager.handleAuthStart(replacement) }
+            worker.join(5000)
+            assertThat(worker.isAlive).isFalse()
+        }
+        val id = LogtoAuthManager.handleAuthStart(session)
+        LogtoAuthManager.cancelOwnedAttempt(id)
+        assertThat(LogtoAuthManager.browserSession).isSameInstanceAs(replacement)
+    }
+
+    @Test
+    fun `replacement during callback admission cannot be detached by the old callback`() {
+        val session: LogtoBrowserSession = mockk(relaxed = true)
+        val replacement: LogtoBrowserSession = mockk(relaxed = true)
+        val validating = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val workerError = AtomicReference<Throwable?>()
+        every { session.acceptsCallbackUri(any()) } answers {
+            validating.countDown()
+            check(release.await(5, TimeUnit.SECONDS))
+            true
+        }
+        LogtoAuthManager.handleAuthStart(session)
+        val worker = thread {
+            try {
+                LogtoAuthManager.handleCallbackUri(Uri.parse("io.logto.android://io.logto.sample/callback"))
+            } catch (error: Throwable) {
+                workerError.set(error)
+            }
+        }
+        try {
+            assertThat(validating.await(5, TimeUnit.SECONDS)).isTrue()
+            LogtoAuthManager.handleAuthStart(replacement)
+        } finally {
+            release.countDown()
+            worker.join(5000)
+        }
+        assertThat(worker.isAlive).isFalse()
+        assertThat(workerError.get()).isNull()
+        assertThat(LogtoAuthManager.browserSession).isSameInstanceAs(replacement)
+        verify(exactly = 0) { session.handleCallbackUri(any()) }
+        verify(exactly = 0) { replacement.handleCallbackUri(any()) }
     }
 
     @Test

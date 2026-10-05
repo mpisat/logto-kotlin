@@ -3,37 +3,73 @@ package io.logto.sdk.android.auth.logto
 import android.annotation.SuppressLint
 import android.net.Uri
 import io.logto.sdk.android.exception.LogtoException
+import java.util.UUID
 
 private const val PERCENT_ENCODED_CHARACTER_LENGTH = 3
 private const val HEX_RADIX = 16
 
 internal object LogtoAuthManager {
-    @SuppressLint("StaticFieldLeak")
-    internal var browserSession: LogtoBrowserSession? = null
+    private data class Attempt(val id: String, val session: LogtoBrowserSession)
+    private val attemptLock = Any()
 
-    fun handleAuthStart(session: LogtoBrowserSession) {
-        browserSession = session
+    @SuppressLint("StaticFieldLeak")
+    private var attempt: Attempt? = null
+
+    internal var browserSession: LogtoBrowserSession?
+        get() = synchronized(attemptLock) { attempt?.session }
+        set(value) {
+            synchronized(attemptLock) {
+                attempt = value?.let { Attempt(UUID.randomUUID().toString(), it) }
+            }
+        }
+
+    internal val browserAttemptId: String?
+        get() = synchronized(attemptLock) { attempt?.id }
+
+    fun ownsAttempt(attemptId: String?): Boolean = synchronized(attemptLock) {
+        attemptId != null && attempt?.id == attemptId
+    }
+
+    fun handleAuthStart(session: LogtoBrowserSession): String {
+        // UUIDs remain distinct from saved activity state after process recreation.
+        val next = Attempt(UUID.randomUUID().toString(), session)
+        synchronized(attemptLock) { attempt = next }
+        return next.id
     }
 
     fun handleCallbackUri(uri: Uri) {
-        val session = browserSession ?: return
-        if (!session.acceptsCallbackUri(uri)) {
-            return
+        val current = synchronized(attemptLock) { attempt } ?: return
+        // Admission and completion may call session code, so both run outside the lock.
+        if (current.session.acceptsCallbackUri(uri)) {
+            detach(current.id)?.handleCallbackUri(uri)
         }
-        browserSession = null
-        session.handleCallbackUri(uri)
     }
 
     fun handleUserCancel() {
-        val session = browserSession ?: return
-        browserSession = null
-        session.handleUserCancel()
+        detach()?.handleUserCancel()
     }
 
     fun handleFailure(exception: LogtoException) {
-        val session = browserSession ?: return
-        browserSession = null
-        session.handleFailure(exception)
+        detach()?.handleFailure(exception)
+    }
+
+    fun cancelOwnedAttempt(attemptId: String?) {
+        if (attemptId != null) {
+            detach(attemptId)?.handleUserCancel()
+        }
+    }
+
+    fun failOwnedAttempt(attemptId: String?, exception: LogtoException) {
+        if (attemptId != null) {
+            detach(attemptId)?.handleFailure(exception)
+        }
+    }
+
+    private fun detach(attemptId: String? = null): LogtoBrowserSession? = synchronized(attemptLock) {
+        val current = attempt ?: return@synchronized null
+        if (attemptId != null && current.id != attemptId) return@synchronized null
+        attempt = null
+        current.session
     }
 
     fun canHandleCallbackUri(uri: Uri) =

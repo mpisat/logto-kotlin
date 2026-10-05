@@ -17,8 +17,8 @@ class LogtoSignOutSession(
     override val redirectUri = postLogoutRedirectUri
 
     fun start() {
-        LogtoAuthManager.handleAuthStart(this)
-        LogtoBrowserAuthActivity.launch(context, signOutUri)
+        val attemptId = LogtoAuthManager.handleAuthStart(this)
+        LogtoBrowserAuthActivity.launch(context, signOutUri, attemptId)
     }
 
     override fun acceptsCallbackUri(callbackUri: Uri) = LogtoAuthManager.isLogtoAuthResult(callbackUri)
