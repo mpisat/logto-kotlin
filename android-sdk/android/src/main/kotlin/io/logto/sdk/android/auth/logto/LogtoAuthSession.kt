@@ -30,7 +30,14 @@ class LogtoAuthSession(
     // OIDC response. Exposed via [matchesState] (not the value itself)
     // so the trampoline can authenticate a callback URI without the
     // value ever leaving this object.
+    //
+    // The URI is untrusted: the exported trampoline accepts any `data`
+    // from any app. An opaque URI (`mailto:x`, `calido:foo`) has no
+    // query, and `getQueryParameter` throws on it, so reject it here.
+    // It cannot be a callback, and returning false leaves the live
+    // session in place for the real redirect.
     internal fun matchesState(uri: Uri): Boolean {
+        if (!uri.isHierarchical) return false
         val incoming = uri.getQueryParameter("state") ?: return false
         return incoming == state
     }
